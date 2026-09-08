@@ -27,8 +27,8 @@
   <section class="intro">
     <h2>Comparte sin dejar rastro</h2>
     <p>
-      Escribe la informacion confidencial, genera un enlace y compartelo.
-      Al abrirse una sola vez, el contenido se destruye del servidor para siempre.
+      Escribe la informacion confidencial o adjunta archivos, genera un enlace y compartelo.
+      Al abrirse una sola vez, todo se destruye del servidor para siempre.
     </p>
   </section>
 
@@ -37,9 +37,30 @@
 
     <div class="campo">
       <label class="etiqueta" for="secreto">Informacion confidencial</label>
-      <textarea id="secreto" name="secreto" required spellcheck="false"
+      <textarea id="secreto" name="secreto" spellcheck="false"
         placeholder="Contrasenas, accesos, tokens, datos bancarios, credenciales de proveedores…"></textarea>
       <div class="contador" id="contador">0 caracteres</div>
+    </div>
+
+    <div class="campo">
+      <div class="bloque-adjuntos__cabecera">
+        <span class="etiqueta">Archivos adjuntos</span>
+        <span class="bloque-adjuntos__peso" id="pesoArchivos"></span>
+      </div>
+
+      <div class="zona-archivos" id="zonaArchivos" role="button" tabindex="0"
+        aria-label="Adjuntar archivos">
+        <span class="zona-archivos__titulo">Arrastra archivos aqui o haz clic para elegirlos</span>
+        <span class="zona-archivos__ayuda" id="ayudaArchivos">Opcional</span>
+        <input type="file" id="entradaArchivos" multiple>
+      </div>
+
+      <ul class="lista-archivos" id="listaArchivos"></ul>
+
+      <p class="ayuda">
+        Los archivos se cifran igual que el texto y se destruyen con el secreto.
+        Se descargan una sola vez, al abrir el enlace.
+      </p>
     </div>
 
     <div class="campo">
