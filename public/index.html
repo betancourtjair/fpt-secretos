@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="es-MX">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FPT Secretos — Enlaces de un solo uso</title>
+<meta name="description" content="Comparte informacion confidencial de Fitness Para Todos con un enlace que se destruye al abrirse.">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAEiklEQVR42sVXTYiVVRh+nvc938+9t+k6M9INwcYUhyAkaNyEC8OKiJCkmkWQ5SKKVtUiJGgTlNGyKESQjApaBJJEhEgbV1ltykUFhjP2j2XapHfG737nbeH5Lmc+7zhOM9IHh3vP3/vzvL8H+J8/LuOu1uYegF0rQRWALFExvRoFFzsgkXbx+SFVfRVAE0AJQEnu6/V6x8KdsiZ8uSzzpGl6f6PR2FzNh4aGRklWkBsAE5HHK4YjIyPXJ0myc2xsLP+vpmZgNK6q74mIicjXW7duzQFIlmV3k7wAoAAwC6BQ1T2dTqdFEqr6CkkTkWPNZvO+pQqhQesHRORc0LAMWn5G8kuSF2PtARjJkuQpETlIslvdIWmq+nrNpP3PDWBOADCzk2ZGAL2wbt77bQtJbWYCYK2ZrY2WCzNzJE9FAkigeUWHdADgnHs7aNiLfsso5OrDhzO+OiMiP05MTCSLmYAB9h2qeicAJEnyiIj8uQjDxUZJskiSZC9JNBqNNSLyJIA88GQFC/M8v0lEzpP0InKI5PlIK1vOCE78iYicIGlZlj0R+5sAgKrur8G9IsxjJ67oi8h0u91e1cc/hJVFcPdWkLlFilW0TVXf6MPvvf+N5BGScQYsw+F42ALrvShbLrRfERcROamqR+c5IEk45z6I4toGxPpl67V5uRgSJH/N83ys8gFXVTAzQ1mWa4Iw35F8y6xf3ExEBMDzZvYpgG8CSkbSq+qw9/4xMxsn+aL3/lx1Lzhaj+Q2M3sIwKqyLK/ro9Vut1dlWbYhy7J7SM4E++y5LE4vpdgvANw1KI5brVZHVaedc88M2s/zfAvJItB/OU3Tje12+2aQ3EtyFkCcXrsA/gYwE8YfAKZJztX2zgKYdc7tD8bdHUxyAsCZcOYXAFMkp0mWUdqeI/mTM7MWgCyyH0l+bGY/hPVZkreb2b0BiQ/DXhoSTWpmR4MZbwxm20DyIwDfAnjUzMYicyKk+DSUcxwIzOeq0HPObZlXIFQfDMxKAHcMMk+e5ztFZKYK5YjGwbBW1EKyB+B3R1IAiJml/d7K+wMi8peZZWbmy7IcrRKWiLwL4KyZJUErT7I9Nze3PswNAM1sNGiZVw5br7gkW0iSZJOqPuycezbY11R1/+rVq8edc4frWdE599Tw8PCtqvrVgELUL0KqWlXOQ7VCZqr6vqpOqup2VxTFcQDHg0S7zOw2M1vf7XYT7/2FiKgGdHxRFD4ymY/KbIUASG5qNpvnut3uSECGwb9Kkm/2er3PUavRcM69EzcYV0gm5VWkXh/CzscIkvx5dHR0KC77bLVaN6jqayT/iWG8BsMDKETkSJIkE/30nKbp9lpKXUwIvwSG9f8lSQtoXzLB5OSkisjhcOhidKFcoRGX+EJEzqZpunFe799oNDaLSNVAfD+oGC2zKTkZOmlT1ZeqcGRUES1N0xe89+fXrVu3b2pq6rmyLHeYWbHEV9G8XhVAIiKnOp3O06dPn74FwK5Go7F7ZmbmTL0R5YC3na7Ae2/BLnjQY0HCmo9+V/IRzIjuNXvILun9+S/D8pGY7i5n9QAAAABJRU5ErkJggg==">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/assets/estilos.css">
+</head>
+<body>
+
+<header class="barra">
+  <div class="barra__interior">
+    <span class="barra__logo" role="img" aria-label="Fitness Para Todos"></span>
+    <h1 class="barra__titulo">FPT <span>Secretos</span></h1>
+    <span class="barra__lema">Fitness Para Todos</span>
+  </div>
+</header>
+
+<main>
+
+  <section class="intro">
+    <h2>Comparte sin dejar rastro</h2>
+    <p>
+      Escribe la informacion confidencial, genera un enlace y compartelo.
+      Al abrirse una sola vez, el contenido se destruye del servidor para siempre.
+    </p>
+  </section>
+
+  <!-- ============ FORMULARIO ============ -->
+  <form id="formulario" class="tarjeta" autocomplete="off" novalidate>
+
+    <div class="campo">
+      <label class="etiqueta" for="secreto">Informacion confidencial</label>
+      <textarea id="secreto" name="secreto" required spellcheck="false"
+        placeholder="Contrasenas, accesos, tokens, datos bancarios, credenciales de proveedores…"></textarea>
+      <div class="contador" id="contador">0 caracteres</div>
+    </div>
+
+    <div class="campo">
+      <span class="etiqueta">Duracion del enlace</span>
+      <div class="duraciones" id="duraciones" role="radiogroup" aria-label="Duracion del enlace"></div>
+      <p class="ayuda">
+        Si nadie lo abre antes de que se cumpla este tiempo, el secreto se destruye solo.
+      </p>
+    </div>
+
+    <div class="campo">
+      <span class="etiqueta">Opciones</span>
+
+      <div class="opcion">
+        <label class="switch">
+          <input type="checkbox" id="permitirCopia" checked>
+          <span class="switch__pista"></span>
+        </label>
+        <span class="opcion__texto">
+          <span class="opcion__titulo">Permitir copiar el texto</span>
+          <span class="opcion__desc">
+            Si lo apagas, quien reciba el enlace vera el contenido pero no podra seleccionarlo
+            ni copiarlo con un boton. Tendra que teclearlo.
+          </span>
+        </span>
+      </div>
+
+      <div class="opcion">
+        <label class="switch">
+          <input type="checkbox" id="usarClave">
+          <span class="switch__pista"></span>
+        </label>
+        <span class="opcion__texto">
+          <span class="opcion__titulo">Pedir una contrasena adicional</span>
+          <span class="opcion__desc">
+            Ademas del enlace, la persona debera escribir esta clave. Compartesela por otro medio
+            (llamada, WhatsApp) para que el enlace por si solo no sirva de nada.
+          </span>
+        </span>
+      </div>
+
+      <div class="sub-campo" id="campoClave" hidden>
+        <input type="password" id="clave" placeholder="Contrasena adicional (minimo 4 caracteres)"
+          autocomplete="new-password" maxlength="256">
+      </div>
+
+      <div class="opcion" id="opcionAviso">
+        <label class="switch">
+          <input type="checkbox" id="usarAviso">
+          <span class="switch__pista"></span>
+        </label>
+        <span class="opcion__texto">
+          <span class="opcion__titulo">Avisarme por correo cuando lo abran</span>
+          <span class="opcion__desc">
+            Recibiras un aviso al abrirse el secreto y otro si expira sin que nadie lo vea.
+            El aviso nunca incluye el contenido.
+          </span>
+        </span>
+      </div>
+
+      <div class="sub-campo" id="campoAviso" hidden>
+        <input type="email" id="correo" placeholder="tu.correo@fpt.com.mx" autocomplete="email">
+        <input type="text" id="referencia" placeholder="Referencia opcional, ej. Accesos SAT — Contabilidad"
+          maxlength="120" class="mt-8">
+      </div>
+    </div>
+
+    <div class="aviso aviso--error oculto" id="errorForm" role="alert"></div>
+
+    <button type="submit" class="btn btn--principal" id="botonGenerar">Generar enlace</button>
+  </form>
+
+  <!-- ============ RESULTADO ============ -->
+  <section class="tarjeta oculto" id="resultado" aria-live="polite">
+    <div class="aviso aviso--exito mb-18">
+      <strong>Listo.</strong> Comparte este enlace con la persona indicada. Se abrira una sola vez.
+    </div>
+
+    <label class="etiqueta" for="enlace">Enlace de un solo uso</label>
+    <div class="enlace-caja">
+      <input type="text" id="enlace" readonly spellcheck="false">
+      <button type="button" class="btn-copiar" id="btnCopiarEnlace">Copiar</button>
+    </div>
+    <p class="ayuda" id="avisoEnlace">
+      Este enlace no se vuelve a mostrar. Copialo ahora.
+    </p>
+
+    <ul class="resumen" id="resumen"></ul>
+
+    <div class="acciones">
+      <button type="button" class="btn btn--secundario" id="btnOtro">Crear otro secreto</button>
+    </div>
+  </section>
+
+  <!-- ============ COMO FUNCIONA ============ -->
+  <section class="tarjeta">
+    <span class="etiqueta mb-16">Como funciona</span>
+    <ol class="pasos">
+      <li><strong>Se cifra</strong>El contenido se cifra con AES-256 antes de guardarse.</li>
+      <li><strong>La llave va en el enlace</strong>El servidor guarda el candado, no la llave.</li>
+      <li><strong>Se abre una vez</strong>Al revelarse, el registro se borra en la misma operacion.</li>
+      <li><strong>O se vence</strong>Si nadie lo abre, se destruye al cumplirse el plazo.</li>
+    </ol>
+  </section>
+
+</main>
+
+<footer class="pie">
+  <strong>FPT Secretos</strong> — Uso interno de Fitness Para Todos.<br>
+  No compartas por este medio informacion que no estes autorizado a divulgar.
+</footer>
+
+<script src="/assets/crear.js"></script>
+</body>
+</html>
