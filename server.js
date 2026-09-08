@@ -37,7 +37,14 @@ app.use(
 );
 
 app.use(compression());
-app.use(express.json({ limit: '1mb' }));
+
+// Los adjuntos viajan en base64 dentro del JSON, que infla ~4/3. Se deja
+// holgura sobre el limite real de archivos, que se valida en la ruta.
+app.use(
+  express.json({
+    limit: Math.ceil((config.maxFilesBytes * 4) / 3 / (1024 * 1024)) + 3 + 'mb',
+  })
+);
 
 // Ninguna respuesta de la API debe quedar en cache.
 app.use('/api', (_req, res, next) => {
