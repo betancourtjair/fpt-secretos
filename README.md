@@ -8,9 +8,10 @@ con la marca FPT y sin necesidad de usuario ni contraseña.
 
 ## Qué hace
 
-Alguien pega una contraseña, un token o unos accesos, elige un par de opciones y obtiene un
-enlace. Cuando el destinatario lo abre, ve el contenido **una sola vez**: el registro se borra
-del servidor en la misma operación. Si nadie lo abre, se destruye solo al vencer el plazo.
+Alguien pega una contraseña, un token o unos accesos —y si hace falta adjunta archivos—,
+elige un par de opciones y obtiene un enlace. Cuando el destinatario lo abre, ve el contenido
+y descarga los archivos **una sola vez**: el registro se borra del servidor en la misma
+operación. Si nadie lo abre, se destruye solo al vencer el plazo.
 
 **Opciones al crear el secreto**
 
@@ -20,6 +21,7 @@ del servidor en la misma operación. Si nadie lo abre, se destruye solo al vence
 | **Permitir copiar el texto** | Encendido: botón *Copiar* en la vista del destinatario. Apagado: el texto no se puede seleccionar ni copiar, hay que transcribirlo. |
 | **Contraseña adicional** | Segundo factor fuera de banda. La clave entra en la derivación de la llave: sin ella el contenido no se puede descifrar, ni siquiera desde el servidor. 5 intentos y el secreto se autodestruye. |
 | **Aviso por correo** | Correo al creador cuando el secreto se abre, cuando expira sin ser visto, o cuando se destruye por intentos fallidos. Nunca incluye el contenido. |
+| **Archivos adjuntos** | Hasta 5 archivos, 5 MB en total. Se cifran igual que el texto y se destruyen con él. Un secreto puede ser solo archivos, sin texto. |
 | **Referencia** | Etiqueta opcional (ej. "Accesos SAT — Contabilidad") para identificar el secreto en los avisos. |
 
 ---
@@ -40,6 +42,9 @@ El diseño asume el peor caso: **que alguien obtenga un volcado completo de la b
 6. El borrado al revelar ocurre **dentro de la misma transacción** que la lectura
    (`SELECT … FOR UPDATE` → descifrar → `DELETE`), así que dos aperturas simultáneas no pueden
    devolver el contenido dos veces.
+7. Los archivos usan la misma llave, cada uno con su propio IV (AES-GCM nunca debe repetir IV
+   con la misma llave). **Su nombre y tipo MIME también van cifrados**: un volcado de la base
+   no revela qué documentos se compartieron, solo cuántos y cuánto pesan.
 
 Otras medidas:
 
@@ -52,6 +57,9 @@ Otras medidas:
 - Al revelarse, el token se borra de la barra de direcciones (`history.replaceState`).
 - Bitácora sin contenido (`secret_events`): solo registra qué pasó con cada identificador y un
   hash de IP. Se poda automáticamente a los 90 días.
+- Los archivos se borran **en cascada** con el secreto: no existe un bucket donde puedan quedar
+  huérfanos si algo falla a medias.
+- Los nombres de archivo se sanean (sin rutas, sin caracteres de control) antes de guardarse.
 
 ### Lo que esta herramienta NO puede evitar
 
@@ -63,6 +71,10 @@ Vale la pena decirlo con claridad antes de que alguien lo asuma de más:
   contenido. Por eso existe la contraseña adicional: compártela por otro canal.
 - Mientras el secreto no se abre, el servidor sí puede quedarse con el registro cifrado. La
   garantía es que sin el token del enlace ese registro no sirve de nada.
+- **Los archivos se entregan al abrir el enlace, no al pulsar "Descargar".** El servidor
+  descifra todo y borra el registro en una sola operación; la descarga ya ocurre en el equipo
+  del destinatario, contra una copia en memoria. Si cierra la pestaña sin descargar, el archivo
+  se perdió: hay que generar un enlace nuevo. Es el precio de que no quede nada en el servidor.
 
 ---
 
@@ -138,9 +150,11 @@ aparece en el formulario.
 npm run migrate && npm run test:e2e
 ```
 
-53 pruebas end-to-end contra una base de datos real: flujo completo, quema de un solo uso,
+83 pruebas end-to-end contra una base de datos real: flujo completo, quema de un solo uso,
 bloqueo de copia, contraseña adicional, autodestrucción por intentos, expiración, barrido,
-confidencialidad frente a un volcado de la base, validaciones y cabeceras HTTP.
+confidencialidad frente a un volcado de la base, validaciones y cabeceras HTTP. Para los
+adjuntos: integridad byte a byte de un binario con los 256 valores posibles, borrado en
+cascada, límites de número y peso, saneo de nombres maliciosos y secretos que son solo archivo.
 
 > Apunta `DATABASE_URL` a una base **desechable**: la suite hace `TRUNCATE` al empezar.
 
@@ -159,7 +173,9 @@ fpt-secretos/
 │   ├── mailer.js              Avisos vía Microsoft Graph
 │   ├── cleanup.js             Barrido de vencidos y poda de bitácora
 │   └── routes/secrets.js      API: crear, consultar, revelar
-├── migrations/001_init.sql
+├── migrations/
+│   ├── 001_init.sql
+│   └── 002_archivos.sql       Tabla secret_files, borrado en cascada
 ├── public/
 │   ├── index.html             Pantalla de creación
 │   ├── secreto.html           Pantalla de revelado
@@ -173,9 +189,9 @@ fpt-secretos/
 | Método | Ruta | Qué hace |
 |---|---|---|
 | `GET` | `/api/config` | Límites y opciones disponibles para el frontend |
-| `POST` | `/api/secrets` | Crea un secreto. Devuelve la URL de un solo uso |
-| `GET` | `/api/secrets/:token` | Estado del enlace **sin quemarlo** (si pide clave, si permite copia, cuándo vence) |
-| `POST` | `/api/secrets/:token/reveal` | Revela y destruye |
+| `POST` | `/api/secrets` | Crea un secreto. Acepta `files: [{name, type, dataBase64}]`. Devuelve la URL de un solo uso |
+| `GET` | `/api/secrets/:token` | Estado del enlace **sin quemarlo** (si pide clave, si permite copia, cuándo vence, cuántos archivos y cuánto pesan — nunca sus nombres) |
+| `POST` | `/api/secrets/:token/reveal` | Revela, entrega los archivos en base64 y destruye |
 | `GET` | `/api/health` | Health check |
 
 ---
@@ -193,3 +209,6 @@ fpt-secretos/
 - **Intentos de contraseña:** 5, en `src/routes/secrets.js` (`MAX_PASSPHRASE_ATTEMPTS`).
 - **Duraciones ofrecidas:** `TTL_OPTIONS_MINUTES`, en el mismo archivo. `MAX_TTL_HOURS` recorta
   el catálogo desde el entorno sin tocar código.
+- **Adjuntos:** `MAX_FILES` y `MAX_FILES_BYTES` en el entorno. Subirlos consume almacenamiento
+  de Neon y RAM del servicio (los archivos viajan en base64 y se descifran en memoria); con el
+  plan Free de Render, 512 MB de RAM, no conviene pasar de 5 MB.
