@@ -62,7 +62,7 @@ async function main() {
   await new Promise((r) => server.once('listening', r));
   base = `http://127.0.0.1:${server.address().port}`;
 
-  await db.query('TRUNCATE secrets, secret_events');
+  await db.query('TRUNCATE secrets, secret_events CASCADE');
 
   /* ---------------------------------------------------------------- */
   grupo('Flujo basico: crear, consultar, revelar, quemar');
@@ -230,6 +230,166 @@ async function main() {
     await db.query('UPDATE secrets SET ciphertext = $2 WHERE lookup_id = $1', [fila.lookup_id, alterado]);
     const rev = await api('POST', `/api/secrets/${token}/reveal`);
     ok('un registro alterado no se descifra (AES-GCM autentica)', rev.status !== 200, `status ${rev.status}`);
+  }
+
+  /* ---------------------------------------------------------------- */
+  grupo('Archivos adjuntos');
+  {
+    // Un binario con los 256 valores de byte posibles, para detectar
+    // cualquier corrupcion en el viaje base64 -> cifrado -> base64.
+    const binario = Buffer.from(Array.from({ length: 256 }, (_, i) => i));
+    const texto = Buffer.from('contrato,importe\nFPT-001,1200.50\n', 'utf8');
+
+    const { status, datos } = await crear({
+      files: [
+        { name: 'certificado.cer', type: 'application/x-x509-ca-cert', dataBase64: binario.toString('base64') },
+        { name: 'reporte.csv', type: 'text/csv', dataBase64: texto.toString('base64') },
+      ],
+    });
+    ok('crea un secreto con dos adjuntos', status === 201, `status ${status}`);
+    ok('informa cuantos archivos lleva', datos.fileCount === 2, String(datos.fileCount));
+    ok('informa el peso total', datos.filesBytes === binario.length + texto.length, String(datos.filesBytes));
+
+    const token = tokenDe(datos.url);
+
+    const meta = await api('GET', `/api/secrets/${token}`);
+    ok('los metadatos reportan 2 archivos', meta.datos.fileCount === 2);
+    ok('los metadatos reportan el peso', meta.datos.filesBytes === binario.length + texto.length);
+    ok(
+      'los metadatos NO revelan los nombres',
+      !JSON.stringify(meta.datos).includes('certificado.cer'),
+      JSON.stringify(meta.datos)
+    );
+
+    // La base guarda los nombres cifrados
+    const dump = await db.query('SELECT * FROM secret_files WHERE lookup_id = $1', [lookupId(token)]);
+    ok('hay 2 filas de archivo en la base', dump.rows.length === 2);
+    const crudo = dump.rows.map((r) => JSON.stringify(r) + r.data_ciphertext.toString('latin1')).join('');
+    ok('el nombre del archivo no esta en claro en la base', !crudo.includes('certificado.cer'));
+    ok('el contenido del CSV no esta en claro en la base', !crudo.includes('FPT-001,1200.50'));
+
+    const rev = await api('POST', `/api/secrets/${token}/reveal`);
+    ok('el revelado entrega los 2 archivos', (rev.datos.files || []).length === 2);
+
+    const a = rev.datos.files[0];
+    const b = rev.datos.files[1];
+    ok('conserva el nombre del primero', a.name === 'certificado.cer', a.name);
+    ok('conserva el tipo MIME', a.type === 'application/x-x509-ca-cert', a.type);
+    ok('conserva el orden', b.name === 'reporte.csv', b.name);
+    ok(
+      'el binario vuelve byte a byte identico',
+      Buffer.from(a.dataBase64, 'base64').equals(binario)
+    );
+    ok(
+      'el CSV vuelve byte a byte identico',
+      Buffer.from(b.dataBase64, 'base64').equals(texto)
+    );
+
+    const tras = await db.query('SELECT COUNT(*)::int AS n FROM secret_files WHERE lookup_id = $1', [
+      lookupId(token),
+    ]);
+    ok('al revelarse, los archivos se borran en cascada', tras.rows[0].n === 0);
+
+    const otra = await api('POST', `/api/secrets/${token}/reveal`);
+    ok('el enlace con archivos tambien es de un solo uso', otra.status === 404);
+  }
+
+  /* ---------------------------------------------------------------- */
+  grupo('Adjuntos: casos limite');
+  {
+    // Secreto que es SOLO un archivo, sin texto
+    const soloArchivo = await api('POST', '/api/secrets', {
+      secret: '',
+      ttlMinutes: 60,
+      files: [{ name: 'llave.key', type: '', dataBase64: Buffer.from('clave-privada').toString('base64') }],
+    });
+    ok('acepta un secreto sin texto pero con archivo', soloArchivo.status === 201, `status ${soloArchivo.status}`);
+    const revSolo = await api('POST', `/api/secrets/${tokenDe(soloArchivo.datos.url)}/reveal`);
+    ok('lo devuelve con texto vacio y un archivo', revSolo.datos.secret === '' && revSolo.datos.files.length === 1);
+    ok('un tipo MIME vacio cae en octet-stream', revSolo.datos.files[0].type === 'application/octet-stream');
+
+    // Ni texto ni archivos
+    const nada = await api('POST', '/api/secrets', { secret: '  ', ttlMinutes: 60, files: [] });
+    ok('rechaza un secreto sin texto y sin archivos', nada.status === 400 && nada.datos.error === 'empty');
+
+    // Demasiados archivos
+    const uno = Buffer.from('x').toString('base64');
+    const muchos = await api('POST', '/api/secrets', {
+      secret: 'x',
+      ttlMinutes: 60,
+      files: Array.from({ length: 6 }, (_, i) => ({ name: `a${i}.txt`, type: 'text/plain', dataBase64: uno })),
+    });
+    ok('rechaza mas de 5 archivos', muchos.status === 400 && muchos.datos.error === 'too_many_files');
+
+    // Demasiado peso
+    const gordo = Buffer.alloc(3 * 1024 * 1024, 7).toString('base64');
+    const pesado = await api('POST', '/api/secrets', {
+      secret: 'x',
+      ttlMinutes: 60,
+      files: [
+        { name: 'a.bin', type: 'application/octet-stream', dataBase64: gordo },
+        { name: 'b.bin', type: 'application/octet-stream', dataBase64: gordo },
+      ],
+    });
+    ok('rechaza archivos que suman mas del limite', pesado.status === 413 && pesado.datos.error === 'files_too_large');
+
+    // Nombre malicioso
+    const trampa = await api('POST', '/api/secrets', {
+      secret: 'x',
+      ttlMinutes: 60,
+      files: [{ name: '../../etc/passwd', type: 'text/plain', dataBase64: uno }],
+    });
+    const revTrampa = await api('POST', `/api/secrets/${tokenDe(trampa.datos.url)}/reveal`);
+    const limpio = revTrampa.datos.files[0].name;
+    ok('sanea rutas en el nombre del archivo', !limpio.includes('/') && !limpio.startsWith('.'), limpio);
+
+    // Formato invalido
+    const basura = await api('POST', '/api/secrets', {
+      secret: 'x',
+      ttlMinutes: 60,
+      files: [{ name: 'a.txt', type: 'text/plain', dataBase64: 'no-es-base64-!!!' }],
+    });
+    ok('rechaza base64 invalido', basura.status === 400 && basura.datos.error === 'bad_files');
+
+    const noArreglo = await api('POST', '/api/secrets', { secret: 'x', ttlMinutes: 60, files: 'nope' });
+    ok('rechaza un campo files que no es lista', noArreglo.status === 400 && noArreglo.datos.error === 'bad_files');
+  }
+
+  /* ---------------------------------------------------------------- */
+  grupo('Adjuntos con contrasena y expiracion');
+  {
+    const dato = Buffer.from('nomina-marzo-2026');
+    const { datos } = await crear({
+      passphrase: 'clave-adjuntos',
+      files: [{ name: 'nomina.xlsx', type: 'application/vnd.ms-excel', dataBase64: dato.toString('base64') }],
+    });
+    const token = tokenDe(datos.url);
+
+    const mala = await api('POST', `/api/secrets/${token}/reveal`, { passphrase: 'incorrecta' });
+    ok('con clave incorrecta no entrega archivos', mala.status === 401 && !mala.datos.files);
+
+    const sigue = await db.query('SELECT COUNT(*)::int AS n FROM secret_files WHERE lookup_id = $1', [
+      lookupId(token),
+    ]);
+    ok('el archivo sigue intacto tras el intento fallido', sigue.rows[0].n === 1);
+
+    const buena = await api('POST', `/api/secrets/${token}/reveal`, { passphrase: 'clave-adjuntos' });
+    ok('con la clave correcta entrega el archivo', Buffer.from(buena.datos.files[0].dataBase64, 'base64').equals(dato));
+
+    // Expiracion tambien arrastra los archivos
+    const otro = await crear({
+      ttlMinutes: 5,
+      files: [{ name: 'temp.txt', type: 'text/plain', dataBase64: Buffer.from('temporal').toString('base64') }],
+    });
+    const t2 = tokenDe(otro.datos.url);
+    await db.query("UPDATE secrets SET expires_at = NOW() - INTERVAL '1 hour' WHERE lookup_id = $1", [
+      lookupId(t2),
+    ]);
+    await cleanup.sweep();
+    const restan = await db.query('SELECT COUNT(*)::int AS n FROM secret_files WHERE lookup_id = $1', [
+      lookupId(t2),
+    ]);
+    ok('el barrido de vencidos tambien borra los archivos', restan.rows[0].n === 0);
   }
 
   /* ---------------------------------------------------------------- */
