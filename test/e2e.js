@@ -321,8 +321,8 @@ async function main() {
     });
     ok('rechaza mas de 5 archivos', muchos.status === 400 && muchos.datos.error === 'too_many_files');
 
-    // Demasiado peso
-    const gordo = Buffer.alloc(3 * 1024 * 1024, 7).toString('base64');
+    // Demasiado peso: dos de 6 MB pasan del limite de 10 MB
+    const gordo = Buffer.alloc(6 * 1024 * 1024, 7).toString('base64');
     const pesado = await api('POST', '/api/secrets', {
       secret: 'x',
       ttlMinutes: 60,
