@@ -18,6 +18,10 @@
   var contenidoSecreto = $('contenidoSecreto');
   var btnCopiarSecreto = $('btnCopiarSecreto');
   var avisoSinCopia = $('avisoSinCopia');
+  var avisoAdjuntos = $('avisoAdjuntos');
+  var bloqueAdjuntos = $('bloqueAdjuntos');
+  var listaAdjuntos = $('listaAdjuntos');
+  var pesoAdjuntos = $('pesoAdjuntos');
 
   var token = decodeURIComponent((location.pathname.split('/s/')[1] || '').split(/[?#]/)[0]);
   var metadatos = null;
@@ -89,6 +93,87 @@
       document.body.removeChild(tmp);
       return ok;
     }
+  }
+
+  /* ---------- archivos adjuntos ---------- */
+
+  function formatoPeso(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1).replace('.0', '') + ' KB';
+    return (bytes / 1024 / 1024).toFixed(1).replace('.0', '') + ' MB';
+  }
+
+  function iconoArchivo() {
+    var ns = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('class', 'archivo__icono');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1.8');
+    svg.setAttribute('aria-hidden', 'true');
+    var cuerpo = document.createElementNS(ns, 'path');
+    cuerpo.setAttribute('d', 'M19 8v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5z');
+    var doblez = document.createElementNS(ns, 'path');
+    doblez.setAttribute('d', 'M14 3v5h5');
+    svg.appendChild(cuerpo);
+    svg.appendChild(doblez);
+    return svg;
+  }
+
+  /** base64 -> Blob, sin pasar por cadenas gigantes. */
+  function aBlob(base64, tipo) {
+    var bin = atob(base64);
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: tipo || 'application/octet-stream' });
+  }
+
+  function pintarAdjuntos(archivos) {
+    if (!archivos || !archivos.length) return;
+
+    listaAdjuntos.innerHTML = '';
+    var total = 0;
+
+    archivos.forEach(function (f) {
+      total += f.size;
+
+      var li = document.createElement('li');
+      li.className = 'archivo';
+      li.appendChild(iconoArchivo());
+
+      var datos = document.createElement('span');
+      datos.className = 'archivo__datos';
+      var nombre = document.createElement('span');
+      nombre.className = 'archivo__nombre';
+      nombre.textContent = f.name;
+      nombre.title = f.name;
+      var peso = document.createElement('span');
+      peso.className = 'archivo__peso';
+      peso.textContent = formatoPeso(f.size);
+      datos.appendChild(nombre);
+      datos.appendChild(peso);
+      li.appendChild(datos);
+
+      // El archivo ya vive solo en esta pestana: la descarga es local.
+      var url = URL.createObjectURL(aBlob(f.dataBase64, f.type));
+      var bajar = document.createElement('a');
+      bajar.className = 'archivo__bajar';
+      bajar.textContent = 'Descargar';
+      bajar.href = url;
+      bajar.download = f.name;
+      bajar.addEventListener('click', function () {
+        bajar.classList.add('descargado');
+        bajar.textContent = 'Descargado';
+      });
+      li.appendChild(bajar);
+
+      listaAdjuntos.appendChild(li);
+    });
+
+    pesoAdjuntos.textContent =
+      archivos.length + (archivos.length === 1 ? ' archivo · ' : ' archivos · ') + formatoPeso(total);
+    bloqueAdjuntos.classList.remove('oculto');
   }
 
   /* ---------- protecciones cuando la copia esta desactivada ---------- */
@@ -163,7 +248,15 @@
   function pintarSecreto(datos) {
     contenidoSecreto.textContent = datos.secret;
 
-    if (datos.allowCopy) {
+    // Un secreto puede traer solo archivos: no tiene caso una caja vacia.
+    if (!datos.secret) {
+      contenidoSecreto.classList.add('oculto');
+      document.querySelector('.cabecera-contenido').classList.add('oculto');
+    }
+
+    pintarAdjuntos(datos.files);
+
+    if (datos.secret && datos.allowCopy) {
       btnCopiarSecreto.classList.remove('oculto');
       btnCopiarSecreto.addEventListener('click', async function () {
         var ok = await copiar(datos.secret);
@@ -174,7 +267,7 @@
           btnCopiarSecreto.classList.remove('copiado');
         }, 2200);
       });
-    } else {
+    } else if (datos.secret) {
       bloquearCopia();
     }
 
@@ -208,6 +301,14 @@
       if (meta.label) {
         referenciaSecreto.textContent = 'Referencia: ' + meta.label;
         referenciaSecreto.classList.remove('oculto');
+      }
+      if (meta.fileCount) {
+        var uno = meta.fileCount === 1;
+        avisoAdjuntos.textContent =
+          'Incluye ' + meta.fileCount + (uno ? ' archivo adjunto · ' : ' archivos adjuntos · ') +
+          formatoPeso(meta.filesBytes) + '. ' +
+          (uno ? 'Podras descargarlo una sola vez.' : 'Podras descargarlos una sola vez.');
+        avisoAdjuntos.classList.remove('oculto');
       }
       arrancarCronometro(meta.expiresAt);
       mostrar(vistaConfirmar);
