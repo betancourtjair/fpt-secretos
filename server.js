@@ -76,7 +76,11 @@ app.get('/robots.txt', (_req, res) => {
   res.type('text/plain').send('User-agent: *\nDisallow: /s/\n');
 });
 
-app.use(express.static(publicDir, { maxAge: '1h', index: 'index.html' }));
+// Los nombres de los archivos estaticos no llevan hash, asi que cachearlos
+// mucho tiempo hace que tras un despliegue convivan HTML viejo con JS nuevo.
+// Con maxAge 0 el navegador revalida y recibe un 304 si nada cambio: cuesta
+// un viaje de ida y vuelta y evita paginas rotas.
+app.use(express.static(publicDir, { maxAge: 0, etag: true, index: 'index.html' }));
 
 app.use((_req, res) => {
   res.status(404).sendFile(path.join(publicDir, 'index.html'));
