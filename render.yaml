@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: fpt-secretos
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm install && npm run migrate
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PUBLIC_BASE_URL
+        sync: false      # ej. https://secretos.fpt.com.mx
+      - key: DATABASE_URL
+        sync: false      # cadena de conexion de Neon
+      - key: SECRET_PEPPER
+        generateValue: true   # 32+ bytes aleatorios. NO cambiar despues.
+      - key: MAX_SECRET_BYTES
+        value: "100000"
+      - key: MAX_TTL_HOURS
+        value: "168"
+      - key: CLEANUP_INTERVAL_MINUTES
+        value: "5"
+      # Avisos por correo (opcionales). Dejalas vacias para desactivarlos.
+      - key: GRAPH_TENANT_ID
+        sync: false
+      - key: GRAPH_CLIENT_ID
+        sync: false
+      - key: GRAPH_CLIENT_SECRET
+        sync: false
+      - key: GRAPH_SENDER
+        sync: false
