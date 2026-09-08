@@ -39,7 +39,7 @@ const config = {
   pepper: Buffer.from(required('SECRET_PEPPER'), 'base64'),
   maxSecretBytes: int('MAX_SECRET_BYTES', 100000),
   maxFiles: int('MAX_FILES', 5),
-  maxFilesBytes: int('MAX_FILES_BYTES', 5 * 1024 * 1024),
+  maxFilesBytes: int('MAX_FILES_BYTES', 10 * 1024 * 1024),
   maxTtlHours: int('MAX_TTL_HOURS', 168),
   cleanupIntervalMinutes: int('CLEANUP_INTERVAL_MINUTES', 5),
   graph,
