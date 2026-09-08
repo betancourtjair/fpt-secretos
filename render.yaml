@@ -20,6 +20,10 @@ services:
         value: "100000"
       - key: MAX_TTL_HOURS
         value: "168"
+      - key: MAX_FILES
+        value: "5"
+      - key: MAX_FILES_BYTES
+        value: "10485760"   # 10 MB: el maximo comodo con los 512 MB del plan Free
       - key: CLEANUP_INTERVAL_MINUTES
         value: "5"
       # Avisos por correo (opcionales). Dejalas vacias para desactivarlos.
