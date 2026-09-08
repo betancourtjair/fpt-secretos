@@ -6,7 +6,7 @@ const rateLimit = require('express-rate-limit');
 
 const config = require('../config');
 const db = require('../db');
-const { encryptSecret, decryptSecret, lookupId } = require('../crypto');
+const { encryptSecret, decryptBundle, lookupId } = require('../crypto');
 const mailer = require('../mailer');
 
 const router = express.Router();
@@ -54,11 +54,80 @@ function fireAndForget(promise, context) {
 const asyncHandler = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 /* ------------------------------------------------------------------ */
+/* Archivos adjuntos                                                   */
+/* ------------------------------------------------------------------ */
+
+const BASE64_RE = /^[A-Za-z0-9+/]*={0,2}$/;
+
+/** Deja un nombre de archivo seguro para guardar en disco. */
+function limpiarNombre(nombre) {
+  const base = String(nombre)
+    .replace(/[\\/]/g, '_') // sin separadores de ruta
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]/g, '') // sin caracteres de control
+    .replace(/^\.+/, '') // sin nombres ocultos ni ".."
+    .trim();
+  return (base || 'archivo').slice(0, 200);
+}
+
+function limpiarTipo(tipo) {
+  const t = String(tipo || '').trim().toLowerCase();
+  return /^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(t) && t.length <= 128
+    ? t
+    : 'application/octet-stream';
+}
+
+/**
+ * Valida y decodifica los adjuntos que llegan en el cuerpo de la peticion.
+ * Devuelve { files } o { error, message } listo para responder.
+ */
+function prepararArchivos(entrada) {
+  if (entrada === undefined || entrada === null) return { files: [] };
+  if (!Array.isArray(entrada)) {
+    return { error: 'bad_files', message: 'El formato de los archivos no es valido.' };
+  }
+  if (entrada.length > config.maxFiles) {
+    return {
+      error: 'too_many_files',
+      message: `Puedes adjuntar como maximo ${config.maxFiles} archivo(s).`,
+    };
+  }
+
+  const files = [];
+  let total = 0;
+
+  for (const item of entrada) {
+    if (!item || typeof item !== 'object') {
+      return { error: 'bad_files', message: 'El formato de los archivos no es valido.' };
+    }
+    const b64 = typeof item.dataBase64 === 'string' ? item.dataBase64.trim() : null;
+    if (b64 === null || !BASE64_RE.test(b64)) {
+      return { error: 'bad_files', message: 'Uno de los archivos llego dañado. Vuelve a adjuntarlo.' };
+    }
+
+    const data = Buffer.from(b64, 'base64');
+    total += data.length;
+    if (total > config.maxFilesBytes) {
+      return {
+        error: 'files_too_large',
+        message: `Los archivos suman mas de ${Math.round(config.maxFilesBytes / 1024 / 1024)} MB.`,
+      };
+    }
+
+    files.push({ name: limpiarNombre(item.name), type: limpiarTipo(item.type), data });
+  }
+
+  return { files };
+}
+
+/* ------------------------------------------------------------------ */
 /* Configuracion publica para el frontend                              */
 /* ------------------------------------------------------------------ */
 router.get('/config', (_req, res) => {
   res.json({
     maxSecretBytes: config.maxSecretBytes,
+    maxFiles: config.maxFiles,
+    maxFilesBytes: config.maxFilesBytes,
     maxTtlHours: config.maxTtlHours,
     ttlOptions: TTL_OPTIONS_MINUTES.filter((m) => m <= config.maxTtlHours * 60),
     emailNotificationsAvailable: mailer.enabled,
@@ -76,8 +145,18 @@ router.post(
     const secret = typeof body.secret === 'string' ? body.secret : '';
     const trimmed = secret.trim();
 
-    if (!trimmed) {
-      return res.status(400).json({ error: 'empty', message: 'Escribe el contenido que quieres compartir.' });
+    const prep = prepararArchivos(body.files);
+    if (prep.error) {
+      return res.status(prep.error === 'files_too_large' ? 413 : 400).json(prep);
+    }
+    const archivos = prep.files;
+
+    // Basta con una de las dos cosas: texto o archivos.
+    if (!trimmed && archivos.length === 0) {
+      return res.status(400).json({
+        error: 'empty',
+        message: 'Escribe el contenido o adjunta al menos un archivo.',
+      });
     }
     if (Buffer.byteLength(secret, 'utf8') > config.maxSecretBytes) {
       return res.status(413).json({
@@ -109,26 +188,49 @@ router.post(
     }
     if (notifyEmail && !mailer.enabled) notifyEmail = '';
 
-    const enc = encryptSecret(secret, passphrase || null);
+    const enc = encryptSecret(secret, passphrase || null, archivos);
     const expiresAt = new Date(Date.now() + ttlMinutes * 60 * 1000);
 
-    await db.query(
-      `INSERT INTO secrets
-         (lookup_id, salt, iv, auth_tag, ciphertext, allow_copy, has_passphrase, notify_email, label, expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [
-        enc.lookupId,
-        enc.salt,
-        enc.iv,
-        enc.authTag,
-        enc.ciphertext,
-        allowCopy,
-        Boolean(passphrase),
-        notifyEmail || null,
-        label,
-        expiresAt,
-      ]
-    );
+    // El secreto y sus archivos entran juntos o no entra nada.
+    await db.withTransaction(async (client) => {
+      await client.query(
+        `INSERT INTO secrets
+           (lookup_id, salt, iv, auth_tag, ciphertext, allow_copy, has_passphrase, notify_email, label, expires_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [
+          enc.lookupId,
+          enc.salt,
+          enc.iv,
+          enc.authTag,
+          enc.ciphertext,
+          allowCopy,
+          Boolean(passphrase),
+          notifyEmail || null,
+          label,
+          expiresAt,
+        ]
+      );
+
+      for (const f of enc.files) {
+        await client.query(
+          `INSERT INTO secret_files
+             (lookup_id, position, meta_iv, meta_auth_tag, meta_ciphertext,
+              data_iv, data_auth_tag, data_ciphertext, size_bytes)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+          [
+            enc.lookupId,
+            f.position,
+            f.metaIv,
+            f.metaAuthTag,
+            f.metaCiphertext,
+            f.dataIv,
+            f.dataAuthTag,
+            f.dataCiphertext,
+            f.sizeBytes,
+          ]
+        );
+      }
+    });
 
     logEvent(null, enc.lookupId, 'created', hashIp(req));
 
@@ -138,6 +240,8 @@ router.post(
       expiresAt: expiresAt.toISOString(),
       allowCopy,
       requiresPassphrase: Boolean(passphrase),
+      fileCount: archivos.length,
+      filesBytes: archivos.reduce((n, f) => n + f.data.length, 0),
     });
   })
 );
@@ -157,7 +261,13 @@ router.get(
     }
 
     const { rows } = await db.query(
-      'SELECT has_passphrase, allow_copy, label, expires_at FROM secrets WHERE lookup_id = $1',
+      `SELECT s.has_passphrase, s.allow_copy, s.label, s.expires_at,
+              COUNT(f.id)::int                       AS file_count,
+              COALESCE(SUM(f.size_bytes), 0)::bigint AS files_bytes
+         FROM secrets s
+         LEFT JOIN secret_files f ON f.lookup_id = s.lookup_id
+        WHERE s.lookup_id = $1
+        GROUP BY s.lookup_id`,
       [lookup]
     );
     const row = rows[0];
@@ -166,12 +276,17 @@ router.get(
       return res.status(404).json({ error: 'not_found' });
     }
 
+    // A proposito no se devuelven los nombres de los archivos: solo cuantos
+    // y cuanto pesan. Los nombres viajan cifrados y solo se descifran al
+    // revelar, en el mismo paso que destruye el secreto.
     res.json({
       exists: true,
       requiresPassphrase: row.has_passphrase,
       allowCopy: row.allow_copy,
       label: row.label,
       expiresAt: new Date(row.expires_at).toISOString(),
+      fileCount: row.file_count,
+      filesBytes: Number(row.files_bytes),
     });
   })
 );
@@ -214,15 +329,19 @@ router.post(
         return { status: 'passphrase_required' };
       }
 
-      let plaintext;
+      const { rows: archivos } = await client.query(
+        'SELECT * FROM secret_files WHERE lookup_id = $1 ORDER BY position, id',
+        [lookup]
+      );
+
+      let paquete;
       try {
-        plaintext = decryptSecret({
+        paquete = decryptBundle({
           token,
           salt: row.salt,
-          iv: row.iv,
-          authTag: row.auth_tag,
-          ciphertext: row.ciphertext,
           passphrase: row.has_passphrase ? passphrase : null,
+          body: { iv: row.iv, authTag: row.auth_tag, ciphertext: row.ciphertext },
+          files: archivos,
         });
       } catch (err) {
         if (err.code !== 'DECRYPT_FAILED') throw err;
@@ -240,13 +359,16 @@ router.post(
         return { status: 'bad_passphrase', attemptsLeft: MAX_PASSPHRASE_ATTEMPTS - attempts };
       }
 
-      // Exito: se destruye en la misma transaccion. Un solo uso, de verdad.
+      // Exito: se destruye en la misma transaccion, y con el secreto se van
+      // sus archivos por la clave foranea en cascada. Un solo uso, de verdad:
+      // lo que el navegador descargue despues ya no existe en el servidor.
       await client.query('DELETE FROM secrets WHERE lookup_id = $1', [lookup]);
       await logEvent(client, lookup, 'viewed', ipHash);
 
       return {
         status: 'ok',
-        secret: plaintext,
+        secret: paquete.text,
+        files: paquete.files,
         allowCopy: row.allow_copy,
         label: row.label,
         row,
@@ -269,6 +391,12 @@ router.post(
           secret: outcome.secret,
           allowCopy: outcome.allowCopy,
           label: outcome.label,
+          files: outcome.files.map((f) => ({
+            name: f.name,
+            type: f.type,
+            size: f.data.length,
+            dataBase64: f.data.toString('base64'),
+          })),
         });
 
       case 'passphrase_required':
