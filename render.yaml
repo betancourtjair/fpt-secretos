@@ -2,7 +2,7 @@ services:
   - type: web
     name: fpt-secretos
     runtime: node
-    plan: starter
+    plan: free          # sube a starter si no quieres que el servicio se duerma
     region: oregon
     buildCommand: npm install && npm run migrate
     startCommand: npm start
@@ -11,7 +11,7 @@ services:
       - key: NODE_ENV
         value: production
       - key: PUBLIC_BASE_URL
-        sync: false      # ej. https://secretos.fpt.com.mx
+        sync: false      # ej. https://fpt-secretos.onrender.com
       - key: DATABASE_URL
         sync: false      # cadena de conexion de Neon
       - key: SECRET_PEPPER
