@@ -21,7 +21,7 @@ operación. Si nadie lo abre, se destruye solo al vencer el plazo.
 | **Permitir copiar el texto** | Encendido: botón *Copiar* en la vista del destinatario. Apagado: el texto no se puede seleccionar ni copiar, hay que transcribirlo. |
 | **Contraseña adicional** | Segundo factor fuera de banda. La clave entra en la derivación de la llave: sin ella el contenido no se puede descifrar, ni siquiera desde el servidor. 5 intentos y el secreto se autodestruye. |
 | **Aviso por correo** | Correo al creador cuando el secreto se abre, cuando expira sin ser visto, o cuando se destruye por intentos fallidos. Nunca incluye el contenido. |
-| **Archivos adjuntos** | Hasta 5 archivos, 5 MB en total. Se cifran igual que el texto y se destruyen con él. Un secreto puede ser solo archivos, sin texto. |
+| **Archivos adjuntos** | Hasta 5 archivos, 10 MB en total. Se cifran igual que el texto y se destruyen con él. Un secreto puede ser solo archivos, sin texto. |
 | **Referencia** | Etiqueta opcional (ej. "Accesos SAT — Contabilidad") para identificar el secreto en los avisos. |
 
 ---
@@ -209,6 +209,23 @@ fpt-secretos/
 - **Intentos de contraseña:** 5, en `src/routes/secrets.js` (`MAX_PASSPHRASE_ATTEMPTS`).
 - **Duraciones ofrecidas:** `TTL_OPTIONS_MINUTES`, en el mismo archivo. `MAX_TTL_HOURS` recorta
   el catálogo desde el entorno sin tocar código.
-- **Adjuntos:** `MAX_FILES` y `MAX_FILES_BYTES` en el entorno. Subirlos consume almacenamiento
-  de Neon y RAM del servicio (los archivos viajan en base64 y se descifran en memoria); con el
-  plan Free de Render, 512 MB de RAM, no conviene pasar de 5 MB.
+- **Adjuntos:** `MAX_FILES` y `MAX_FILES_BYTES` en el entorno. Los archivos viajan en base64 y
+  se descifran en memoria, así que el límite lo marca la RAM del servicio. Medido sobre los
+  512 MB del plan Free de Render, con tres secretos abriéndose a la vez:
+
+  | Tamaño por secreto | RAM pico | Veredicto |
+  |---|---|---|
+  | 8 MB | 312 MB | holgado |
+  | 10 MB | 381 MB | **límite recomendado** |
+  | 20 MB | 507 MB | al filo de los 512: el servicio reinicia |
+
+  Un reinicio a media entrega es peor que lento: el borrado ya se confirmó en la base, así que
+  el secreto se destruye sin llegar a su destinatario. Por eso el techo en plan Free es 10 MB.
+  Subir a Starter ($7) **no** ayuda aquí: tiene los mismos 512 MB y solo mejora CPU y el
+  apagado por inactividad. Para 20 MB haría falta el plan Standard (2 GB) o rehacer la subida
+  y la descarga por streaming, lo que obligaría a soltar el borrado atómico al abrir.
+
+- **Ancho de banda:** el plan Free de Render incluye 5 GB al mes **para toda la cuenta**, no por
+  servicio. Cada secreto de 10 MB gasta unos 24 MB (escritura a Neon + respuesta en base64), así
+  que rondan los 200 envíos mensuales compartidos con los demás servicios. Ese contador aprieta
+  antes que cualquier límite de tamaño.
